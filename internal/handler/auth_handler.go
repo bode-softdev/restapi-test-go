@@ -35,7 +35,7 @@ type loginResponse struct {
 
 // Register god user
 // @Summary Register user baru
-// @Description Membuat akun baru. Rate limit 3 permintaan per 60 detik.
+// @Description Membuat akun baru.
 // @Tags auth
 // @Accept json
 // @Produce json
@@ -43,7 +43,6 @@ type loginResponse struct {
 // @Success 201 {object} registerResponse
 // @Failure 400 {object} response.ErrorPayload
 // @Failure 409 {object} response.ErrorPayload
-// @Failure 429 {object} response.ErrorPayload
 // @Failure 500 {object} response.ErrorPayload
 // @Router /api/auth/register [post]
 func (h *AuthHandler) Register(c *gin.Context) {
@@ -80,7 +79,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 // Login god user
 // @Summary Login dan ambil token
-// @Description Mengembalikan authentication_token dan refresh_token. Rate limit 3 permintaan per 60 detik.
+// @Description Mengembalikan authentication_token dan refresh_token.
 // @Tags auth
 // @Accept json
 // @Produce json
@@ -88,7 +87,6 @@ func (h *AuthHandler) Register(c *gin.Context) {
 // @Success 200 {object} loginResponse
 // @Failure 400 {object} response.ErrorPayload
 // @Failure 401 {object} response.ErrorPayload
-// @Failure 429 {object} response.ErrorPayload
 // @Failure 500 {object} response.ErrorPayload
 // @Router /api/auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
@@ -127,7 +125,6 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // @Success 200 {object} response.TokenResponse
 // @Failure 400 {object} response.ErrorPayload
 // @Failure 401 {object} response.ErrorPayload
-// @Failure 429 {object} response.ErrorPayload
 // @Failure 500 {object} response.ErrorPayload
 // @Router /api/auth/refresh [post]
 func (h *AuthHandler) Refresh(c *gin.Context) {
@@ -152,8 +149,8 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 }
 
 // Logout god user
-// @Summary Cabut refresh token
-// @Description Refresh token dicabut sehingga tidak bisa dipakai lagi.
+// @Summary Cabut refresh token dan access token
+// @Description Refresh token dicabut, dan access token yang berpasangan ikut dicabut sehingga langsung ditolak dengan TOKEN_REVOKED. Sesi login lain tidak terpengaruh.
 // @Tags auth
 // @Accept json
 // @Produce json

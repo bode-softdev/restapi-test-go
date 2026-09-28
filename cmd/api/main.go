@@ -3,7 +3,7 @@
 //	@title						REST API Product Management
 //	@version					1.0
 //	@description				REST API untuk manajemen produk dengan autentikasi JWT, cache, dan rate limit.
-//	@description				Endpoint produk (POST, PUT, DELETE) wajib memakai header Authorization: Bearer <authentication_token>.
+//	@description				Seluruh endpoint /api/products wajib memakai header Authorization: Bearer <authentication_token>.
 //	@termsOfService				http://swagger.io/terms/
 //	@contact.name				restapi-test
 //	@license.name				MIT
@@ -28,7 +28,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"restapi-test/internal/cache"
 	"restapi-test/internal/config"
 	"restapi-test/internal/database"
 	"restapi-test/internal/handler"
@@ -62,26 +61,17 @@ func main() {
 		log.Printf("database: seeding dilewati: %v", err)
 	}
 
-	productCache := cache.New(cfg)
-	defer func() {
-		if err := productCache.Close(); err != nil {
-			log.Printf("cache: tutup koneksi gagal: %v", err)
-		}
-	}()
-
 	productRepo := repository.NewProductRepository(db)
 	userRepo := repository.NewUserRepository(db)
 	tokenRepo := repository.NewTokenRepository(db)
 
 	authService := service.NewAuthService(userRepo, tokenRepo, cfg)
-	productService := service.NewProductService(productRepo, productCache, cfg.CacheTTLList, cfg.CacheTTLItem)
+	productService := service.NewProductService(productRepo)
 
 	engine := router.New(router.Deps{
-		Redis:           productCache.Client(),
-		RateLimitPrefix: cfg.RateLimitPrefix,
-		Products:        handler.NewProductHandler(productService),
-		Auth:            handler.NewAuthHandler(authService),
-		AuthMiddleware:  middleware.Auth(authService),
+		Products:       handler.NewProductHandler(productService),
+		Auth:           handler.NewAuthHandler(authService),
+		AuthMiddleware: middleware.Auth(authService),
 	})
 
 	server := &http.Server{

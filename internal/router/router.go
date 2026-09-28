@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 
@@ -17,25 +16,15 @@ import (
 )
 
 type Deps struct {
-	Redis           *redis.Client
-	RateLimitPrefix string
-	Products        *handler.ProductHandler
-	Auth            *handler.AuthHandler
-	AuthMiddleware  gin.HandlerFunc
+	Products       *handler.ProductHandler
+	Auth           *handler.AuthHandler
+	AuthMiddleware gin.HandlerFunc
 }
 
 func New(deps Deps) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery(), middleware.RequestLogger(), middleware.CORS())
 	r.HandleMethodNotAllowed = true
-
-	prefix := deps.RateLimitPrefix
-	if prefix == "" {
-		prefix = "rl"
-	}
-
-	authLimit := middleware.RateLimitRule{Limit: 3, Window: 60 * time.Second}
-	writeLimit := middleware.RateLimitRule{Limit: 1, Window: 5 * time.Second}
 
 	r.NoRoute(func(c *gin.Context) {
 		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "endpoint tidak ditemukan", map[string]any{
@@ -57,23 +46,19 @@ func New(deps Deps) *gin.Engine {
 	{
 		authGroup := api.Group("/auth")
 		{
-			authGroup.POST("/register", middleware.RateLimit(deps.Redis, prefix, "auth", authLimit), deps.Auth.Register)
-			authGroup.POST("/login", middleware.RateLimit(deps.Redis, prefix, "auth", authLimit), deps.Auth.Login)
-			authGroup.POST("/refresh", middleware.RateLimit(deps.Redis, prefix, "auth", authLimit), deps.Auth.Refresh)
-			authGroup.POST("/logout", middleware.RateLimit(deps.Redis, prefix, "auth", authLimit), deps.Auth.Logout)
+			authGroup.POST("/register", deps.Auth.Register)
+			authGroup.POST("/login", deps.Auth.Login)
+			authGroup.POST("/refresh", deps.Auth.Refresh)
+			authGroup.POST("/logout", deps.Auth.Logout)
 		}
 
-		productGroup := api.Group("/products")
+		productGroup := api.Group("/products", deps.AuthMiddleware)
 		{
 			productGroup.GET("", deps.Products.List)
 			productGroup.GET("/:id", deps.Products.GetByID)
-
-			authorized := productGroup.Group("", deps.AuthMiddleware)
-			{
-				authorized.POST("", middleware.RateLimit(deps.Redis, prefix, "product-write", writeLimit), deps.Products.Create)
-				authorized.PUT("/:id", middleware.RateLimit(deps.Redis, prefix, "product-write", writeLimit), deps.Products.Update)
-				authorized.DELETE("/:id", middleware.RateLimit(deps.Redis, prefix, "product-write", writeLimit), deps.Products.Delete)
-			}
+			productGroup.POST("", deps.Products.Create)
+			productGroup.PUT("/:id", deps.Products.Update)
+			productGroup.DELETE("/:id", deps.Products.Delete)
 		}
 	}
 

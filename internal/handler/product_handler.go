@@ -39,16 +39,18 @@ func (q productQuery) toFilter() repository.ProductFilter {
 
 // List god products
 // @Summary Ambil semua produk
-// @Description Mengembalikan daftar produk dengan pencarian, filter kategori, dan pagination
+// @Description Endpoint butuh autentikasi. Mengembalikan daftar produk dengan pencarian, filter kategori, dan pagination
 // @Tags products
 // @Accept json
 // @Produce json
+// @Security BearerAuth
 // @Param search query string false "cari produk berdasarkan judul"
 // @Param category query string false "filter berdasarkan kategori"
 // @Param page query int false "nomor halaman" default(1)
 // @Param limit query int false "jumlah item per halaman" default(10)
 // @Success 200 {object} response.ListPayload{data=[]response.ProductResponse,meta=response.Meta}
 // @Failure 400 {object} response.ErrorPayload
+// @Failure 401 {object} response.ErrorPayload
 // @Failure 500 {object} response.ErrorPayload
 // @Router /api/products [get]
 func (h *ProductHandler) List(c *gin.Context) {
@@ -68,12 +70,15 @@ func (h *ProductHandler) List(c *gin.Context) {
 
 // Get god product by id
 // @Summary Ambil detail satu produk
-// @Description Mengembalikan detail produk berdasarkan ID
+// @Description Endpoint butuh autentikasi. Mengembalikan detail produk berdasarkan ID
 // @Tags products
 // @Accept json
 // @Produce json
+// @Security BearerAuth
 // @Param id path int true "ID produk"
 // @Success 200 {object} response.DataPayload{data=response.ProductResponse}
+// @Failure 400 {object} response.ErrorPayload
+// @Failure 401 {object} response.ErrorPayload
 // @Failure 404 {object} response.ErrorPayload
 // @Failure 500 {object} response.ErrorPayload
 // @Router /api/products/{id} [get]
@@ -97,7 +102,7 @@ func (h *ProductHandler) GetByID(c *gin.Context) {
 
 // Create god product
 // @Summary Tambah produk baru
-// @Description Endpoint butuh autentikasi. Rate limit 1 permintaan per 5 detik.
+// @Description Endpoint butuh autentikasi.
 // @Tags products
 // @Accept json
 // @Produce json
@@ -106,7 +111,6 @@ func (h *ProductHandler) GetByID(c *gin.Context) {
 // @Success 201 {object} response.DataPayload{data=response.ProductResponse}
 // @Failure 400 {object} response.ErrorPayload
 // @Failure 401 {object} response.ErrorPayload
-// @Failure 429 {object} response.ErrorPayload
 // @Failure 500 {object} response.ErrorPayload
 // @Router /api/products [post]
 func (h *ProductHandler) Create(c *gin.Context) {
@@ -133,7 +137,7 @@ func (h *ProductHandler) Create(c *gin.Context) {
 
 // Update god product
 // @Summary Edit produk
-// @Description Endpoint butuh autentikasi. Rate limit 1 permintaan per 5 detik.
+// @Description Endpoint butuh autentikasi.
 // @Tags products
 // @Accept json
 // @Produce json
@@ -144,7 +148,6 @@ func (h *ProductHandler) Create(c *gin.Context) {
 // @Failure 400 {object} response.ErrorPayload
 // @Failure 401 {object} response.ErrorPayload
 // @Failure 404 {object} response.ErrorPayload
-// @Failure 429 {object} response.ErrorPayload
 // @Failure 500 {object} response.ErrorPayload
 // @Router /api/products/{id} [put]
 func (h *ProductHandler) Update(c *gin.Context) {
@@ -159,7 +162,7 @@ func (h *ProductHandler) Update(c *gin.Context) {
 		return
 	}
 
-	existing, err := h.products.GetByIDFresh(c.Request.Context(), id)
+	existing, err := h.products.GetByID(c.Request.Context(), id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			response.Fail(c, 404, response.CodeNotFound, "produk tidak ditemukan", map[string]any{"id": id})
@@ -224,7 +227,7 @@ func (h *ProductHandler) Update(c *gin.Context) {
 
 // Delete god product
 // @Summary Hapus produk
-// @Description Endpoint butuh autentikasi. Rate limit 1 permintaan per 5 detik.
+// @Description Endpoint butuh autentikasi.
 // @Tags products
 // @Accept json
 // @Produce json
@@ -233,7 +236,6 @@ func (h *ProductHandler) Update(c *gin.Context) {
 // @Success 200 {object} response.MessagePayload
 // @Failure 401 {object} response.ErrorPayload
 // @Failure 404 {object} response.ErrorPayload
-// @Failure 429 {object} response.ErrorPayload
 // @Failure 500 {object} response.ErrorPayload
 // @Router /api/products/{id} [delete]
 func (h *ProductHandler) Delete(c *gin.Context) {

@@ -23,7 +23,7 @@ const docTemplate = `{
     "paths": {
         "/api/auth/login": {
             "post": {
-                "description": "Mengembalikan authentication_token dan refresh_token. Rate limit 3 permintaan per 60 detik.",
+                "description": "Mengembalikan authentication_token dan refresh_token.",
                 "consumes": [
                     "application/json"
                 ],
@@ -64,12 +64,6 @@ const docTemplate = `{
                             "$ref": "#/definitions/restapi-test_internal_response.ErrorPayload"
                         }
                     },
-                    "429": {
-                        "description": "Too Many Requests",
-                        "schema": {
-                            "$ref": "#/definitions/restapi-test_internal_response.ErrorPayload"
-                        }
-                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -81,7 +75,7 @@ const docTemplate = `{
         },
         "/api/auth/logout": {
             "post": {
-                "description": "Refresh token dicabut sehingga tidak bisa dipakai lagi.",
+                "description": "Refresh token dicabut, dan access token yang berpasangan ikut dicabut sehingga langsung ditolak dengan TOKEN_REVOKED. Sesi login lain tidak terpengaruh.",
                 "consumes": [
                     "application/json"
                 ],
@@ -91,7 +85,7 @@ const docTemplate = `{
                 "tags": [
                     "auth"
                 ],
-                "summary": "Cabut refresh token",
+                "summary": "Cabut refresh token dan access token",
                 "parameters": [
                     {
                         "description": "refresh token",
@@ -168,12 +162,6 @@ const docTemplate = `{
                             "$ref": "#/definitions/restapi-test_internal_response.ErrorPayload"
                         }
                     },
-                    "429": {
-                        "description": "Too Many Requests",
-                        "schema": {
-                            "$ref": "#/definitions/restapi-test_internal_response.ErrorPayload"
-                        }
-                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -185,7 +173,7 @@ const docTemplate = `{
         },
         "/api/auth/register": {
             "post": {
-                "description": "Membuat akun baru. Rate limit 3 permintaan per 60 detik.",
+                "description": "Membuat akun baru.",
                 "consumes": [
                     "application/json"
                 ],
@@ -226,12 +214,6 @@ const docTemplate = `{
                             "$ref": "#/definitions/restapi-test_internal_response.ErrorPayload"
                         }
                     },
-                    "429": {
-                        "description": "Too Many Requests",
-                        "schema": {
-                            "$ref": "#/definitions/restapi-test_internal_response.ErrorPayload"
-                        }
-                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -243,7 +225,12 @@ const docTemplate = `{
         },
         "/api/products": {
             "get": {
-                "description": "Mengembalikan daftar produk dengan pencarian, filter kategori, dan pagination",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Endpoint butuh autentikasi. Mengembalikan daftar produk dengan pencarian, filter kategori, dan pagination",
                 "consumes": [
                     "application/json"
                 ],
@@ -313,6 +300,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/restapi-test_internal_response.ErrorPayload"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/restapi-test_internal_response.ErrorPayload"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -327,7 +320,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Endpoint butuh autentikasi. Rate limit 1 permintaan per 5 detik.",
+                "description": "Endpoint butuh autentikasi.",
                 "consumes": [
                     "application/json"
                 ],
@@ -380,12 +373,6 @@ const docTemplate = `{
                             "$ref": "#/definitions/restapi-test_internal_response.ErrorPayload"
                         }
                     },
-                    "429": {
-                        "description": "Too Many Requests",
-                        "schema": {
-                            "$ref": "#/definitions/restapi-test_internal_response.ErrorPayload"
-                        }
-                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -397,7 +384,12 @@ const docTemplate = `{
         },
         "/api/products/{id}": {
             "get": {
-                "description": "Mengembalikan detail produk berdasarkan ID",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Endpoint butuh autentikasi. Mengembalikan detail produk berdasarkan ID",
                 "consumes": [
                     "application/json"
                 ],
@@ -436,6 +428,18 @@ const docTemplate = `{
                             ]
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/restapi-test_internal_response.ErrorPayload"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/restapi-test_internal_response.ErrorPayload"
+                        }
+                    },
                     "404": {
                         "description": "Not Found",
                         "schema": {
@@ -456,7 +460,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Endpoint butuh autentikasi. Rate limit 1 permintaan per 5 detik.",
+                "description": "Endpoint butuh autentikasi.",
                 "consumes": [
                     "application/json"
                 ],
@@ -522,12 +526,6 @@ const docTemplate = `{
                             "$ref": "#/definitions/restapi-test_internal_response.ErrorPayload"
                         }
                     },
-                    "429": {
-                        "description": "Too Many Requests",
-                        "schema": {
-                            "$ref": "#/definitions/restapi-test_internal_response.ErrorPayload"
-                        }
-                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -542,7 +540,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Endpoint butuh autentikasi. Rate limit 1 permintaan per 5 detik.",
+                "description": "Endpoint butuh autentikasi.",
                 "consumes": [
                     "application/json"
                 ],
@@ -577,12 +575,6 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/restapi-test_internal_response.ErrorPayload"
-                        }
-                    },
-                    "429": {
-                        "description": "Too Many Requests",
                         "schema": {
                             "$ref": "#/definitions/restapi-test_internal_response.ErrorPayload"
                         }
@@ -945,7 +937,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "/",
 	Schemes:          []string{"http", "https"},
 	Title:            "REST API Product Management",
-	Description:      "REST API untuk manajemen produk dengan autentikasi JWT, cache, dan rate limit.\nEndpoint produk (POST, PUT, DELETE) wajib memakai header Authorization: Bearer <authentication_token>.",
+	Description:      "REST API untuk manajemen produk dengan autentikasi JWT, cache, dan rate limit.\nSeluruh endpoint /api/products wajib memakai header Authorization: Bearer <authentication_token>.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

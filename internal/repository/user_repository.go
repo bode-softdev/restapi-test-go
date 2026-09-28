@@ -96,14 +96,41 @@ func (r *TokenRepository) Revoke(ctx context.Context, hash string) error {
 	now := time.Now()
 	return r.db.WithContext(ctx).Model(&model.RefreshToken{}).
 		Where("token_hash = ? AND revoked_at IS NULL", hash).
-		Update("revoked_at", now).Error
+		Updates(map[string]any{"revoked_at": now, "access_revoked_at": now}).Error
+}
+
+func (r *TokenRepository) RevokeAccessByJTI(ctx context.Context, jti string) error {
+	now := time.Now()
+	return r.db.WithContext(ctx).Model(&model.RefreshToken{}).
+		Where("access_jti = ? AND access_revoked_at IS NULL", jti).
+		Update("access_revoked_at", now).Error
+}
+
+func (r *TokenRepository) IsAccessTokenRevoked(ctx context.Context, jti string) (bool, error) {
+	if jti == "" {
+		return false, nil
+	}
+	var count int64
+	err := r.db.WithContext(ctx).Model(&model.RefreshToken{}).
+		Where("access_jti = ? AND access_revoked_at IS NOT NULL", jti).
+		Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func (r *TokenRepository) RevokeAllForUser(ctx context.Context, userID uint) error {
 	now := time.Now()
 	return r.db.WithContext(ctx).Model(&model.RefreshToken{}).
 		Where("user_id = ? AND revoked_at IS NULL", userID).
-		Update("revoked_at", now).Error
+		Updates(map[string]any{"revoked_at": now, "access_revoked_at": now}).Error
+}
+
+func (r *TokenRepository) DeleteExpired(ctx context.Context) error {
+	now := time.Now()
+	return r.db.WithContext(ctx).Where("expires_at < ? OR (access_revoked_at IS NOT NULL AND access_revoked_at < ?)", now, now.Add(-24*time.Hour)).
+		Delete(&model.RefreshToken{}).Error
 }
 
 func isUniqueViolation(err error) bool {

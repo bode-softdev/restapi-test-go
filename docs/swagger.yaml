@@ -238,7 +238,7 @@ info:
     name: restapi-test
   description: |-
     REST API untuk manajemen produk dengan autentikasi JWT, cache, dan rate limit.
-    Endpoint produk (POST, PUT, DELETE) wajib memakai header Authorization: Bearer <authentication_token>.
+    Seluruh endpoint /api/products wajib memakai header Authorization: Bearer <authentication_token>.
   license:
     name: MIT
   termsOfService: http://swagger.io/terms/
@@ -249,8 +249,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Mengembalikan authentication_token dan refresh_token. Rate limit
-        3 permintaan per 60 detik.
+      description: Mengembalikan authentication_token dan refresh_token.
       parameters:
       - description: kredensial login
         in: body
@@ -273,10 +272,6 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
-        "429":
-          description: Too Many Requests
-          schema:
-            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
         "500":
           description: Internal Server Error
           schema:
@@ -288,7 +283,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Refresh token dicabut sehingga tidak bisa dipakai lagi.
+      description: Refresh token dicabut, dan access token yang berpasangan ikut dicabut
+        sehingga langsung ditolak dengan TOKEN_REVOKED. Sesi login lain tidak terpengaruh.
       parameters:
       - description: refresh token
         in: body
@@ -311,7 +307,7 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
-      summary: Cabut refresh token
+      summary: Cabut refresh token dan access token
       tags:
       - auth
   /api/auth/refresh:
@@ -341,10 +337,6 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
-        "429":
-          description: Too Many Requests
-          schema:
-            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
         "500":
           description: Internal Server Error
           schema:
@@ -356,7 +348,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Membuat akun baru. Rate limit 3 permintaan per 60 detik.
+      description: Membuat akun baru.
       parameters:
       - description: data register
         in: body
@@ -379,10 +371,6 @@ paths:
           description: Conflict
           schema:
             $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
-        "429":
-          description: Too Many Requests
-          schema:
-            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
         "500":
           description: Internal Server Error
           schema:
@@ -394,8 +382,8 @@ paths:
     get:
       consumes:
       - application/json
-      description: Mengembalikan daftar produk dengan pencarian, filter kategori,
-        dan pagination
+      description: Endpoint butuh autentikasi. Mengembalikan daftar produk dengan
+        pencarian, filter kategori, dan pagination
       parameters:
       - description: cari produk berdasarkan judul
         in: query
@@ -435,17 +423,23 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+      security:
+      - BearerAuth: []
       summary: Ambil semua produk
       tags:
       - products
     post:
       consumes:
       - application/json
-      description: Endpoint butuh autentikasi. Rate limit 1 permintaan per 5 detik.
+      description: Endpoint butuh autentikasi.
       parameters:
       - description: data produk
         in: body
@@ -473,10 +467,6 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
-        "429":
-          description: Too Many Requests
-          schema:
-            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
         "500":
           description: Internal Server Error
           schema:
@@ -490,7 +480,7 @@ paths:
     delete:
       consumes:
       - application/json
-      description: Endpoint butuh autentikasi. Rate limit 1 permintaan per 5 detik.
+      description: Endpoint butuh autentikasi.
       parameters:
       - description: ID produk
         in: path
@@ -512,10 +502,6 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
-        "429":
-          description: Too Many Requests
-          schema:
-            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
         "500":
           description: Internal Server Error
           schema:
@@ -528,7 +514,8 @@ paths:
     get:
       consumes:
       - application/json
-      description: Mengembalikan detail produk berdasarkan ID
+      description: Endpoint butuh autentikasi. Mengembalikan detail produk berdasarkan
+        ID
       parameters:
       - description: ID produk
         in: path
@@ -547,6 +534,14 @@ paths:
                 data:
                   $ref: '#/definitions/restapi-test_internal_response.ProductResponse'
               type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
         "404":
           description: Not Found
           schema:
@@ -555,13 +550,15 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+      security:
+      - BearerAuth: []
       summary: Ambil detail satu produk
       tags:
       - products
     put:
       consumes:
       - application/json
-      description: Endpoint butuh autentikasi. Rate limit 1 permintaan per 5 detik.
+      description: Endpoint butuh autentikasi.
       parameters:
       - description: ID produk
         in: path
@@ -596,10 +593,6 @@ paths:
             $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
         "404":
           description: Not Found
-          schema:
-            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
-        "429":
-          description: Too Many Requests
           schema:
             $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
         "500":

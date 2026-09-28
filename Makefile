@@ -7,7 +7,7 @@ help:
 	@echo "make run              jalankan API secara lokal"
 	@echo "make build            compile biner ke $(BINARY)"
 	@echo "make test             jalankan unit test"
-	@echo "make test-integration jalankan test integrasi (butuh postgres + redis)"
+	@echo "make test-integration jalankan test integrasi (butuh postgres)"
 	@echo "make lint             gofmt check + go vet"
 	@echo "make fmt              gofmt -w"
 	@echo "make swag             generate ulang dokumentasi swagger"

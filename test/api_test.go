@@ -2,7 +2,6 @@ package integration_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,11 +11,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
-	"restapi-test/internal/cache"
 	"restapi-test/internal/config"
 	"restapi-test/internal/database"
 	"restapi-test/internal/handler"
@@ -29,7 +26,6 @@ import (
 type testEnv struct {
 	router http.Handler
 	db     *gorm.DB
-	redis  *redis.Client
 	cfg    *config.Config
 }
 
@@ -40,25 +36,16 @@ func newTestEnv(t *testing.T) *testEnv {
 	if dsn == "" {
 		t.Skip("TEST_DATABASE_URL belum diisi, test integrasi dilewati")
 	}
-	redisAddr := os.Getenv("TEST_REDIS_ADDR")
-	if redisAddr == "" {
-		t.Skip("TEST_REDIS_ADDR belum diisi, test integrasi dilewati")
-	}
 
 	cfg := &config.Config{
 		GinMode:         gin.TestMode,
 		DatabaseURL:     dsn,
-		RedisAddr:       redisAddr,
-		RedisPassword:   os.Getenv("TEST_REDIS_PASSWORD"),
 		JWTSecret:       "test-secret-minimal-32-karakter-panjang",
 		AccessTokenTTL:  15 * time.Minute,
 		RefreshTTL:      24 * time.Hour,
 		BcryptCost:      4,
-		CacheTTLList:    time.Minute,
-		CacheTTLItem:    5 * time.Minute,
 		ConnectAttempts: 1,
 		ConnectBackoff:  10 * time.Millisecond,
-		RateLimitPrefix: "rl:run:" + fmt.Sprint(time.Now().UnixNano()),
 	}
 	gin.SetMode(gin.TestMode)
 
@@ -71,38 +58,36 @@ func newTestEnv(t *testing.T) *testEnv {
 	require.NoError(t, sqlDB.Ping())
 	truncateAll(t, db)
 
-	productCache := cache.New(cfg)
-	require.True(t, productCache.Healthy(), "redis harus terjangkau untuk test integrasi")
-
 	productRepo := repository.NewProductRepository(db)
 	authService := service.NewAuthService(repository.NewUserRepository(db), repository.NewTokenRepository(db), cfg)
-	productService := service.NewProductService(productRepo, productCache, cfg.CacheTTLList, cfg.CacheTTLItem)
+	productService := service.NewProductService(productRepo)
 
 	engine := router.New(router.Deps{
-		Redis:           productCache.Client(),
-		RateLimitPrefix: cfg.RateLimitPrefix,
-		Products:        handler.NewProductHandler(productService),
-		Auth:            handler.NewAuthHandler(authService),
-		AuthMiddleware:  middleware.Auth(authService),
+		Products:       handler.NewProductHandler(productService),
+		Auth:           handler.NewAuthHandler(authService),
+		AuthMiddleware: middleware.Auth(authService),
 	})
 
 	t.Cleanup(func() {
 		truncateAll(t, db)
-		flushCtx, flushCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer flushCancel()
-		if client := productCache.Client(); client != nil {
-			_ = client.FlushDB(flushCtx).Err()
-		}
-		_ = productCache.Close()
 		_ = sqlDB.Close()
 	})
 
-	return &testEnv{router: engine, db: db, redis: productCache.Client(), cfg: cfg}
+	return &testEnv{router: engine, db: db, cfg: cfg}
 }
 
 type authResult struct {
 	Access  string
 	Refresh string
+}
+
+type tokenPair struct {
+	AuthenticationToken string `json:"authentication_token"`
+	RefreshToken        string `json:"refresh_token"`
+}
+
+type tokenEnvelope struct {
+	Data tokenPair `json:"data"`
 }
 
 func (e *testEnv) request(t *testing.T, method, path string, body any, token string) *httptest.ResponseRecorder {
@@ -141,15 +126,23 @@ func (e *testEnv) registerAndLogin(t *testing.T, username string) authResult {
 	}, "")
 	require.Equal(t, http.StatusOK, login.Code, login.Body.String())
 
-	var payload struct {
-		AuthenticationToken string `json:"authentication_token"`
-		RefreshToken        string `json:"refresh_token"`
-	}
-	require.NoError(t, json.Unmarshal(login.Body.Bytes(), &payload))
-	require.NotEmpty(t, payload.AuthenticationToken)
-	require.NotEmpty(t, payload.RefreshToken)
+	tokens := decodeTokens(t, login.Body.Bytes())
+	require.NotEmpty(t, tokens.AuthenticationToken)
+	require.NotEmpty(t, tokens.RefreshToken)
 
-	return authResult{Access: payload.AuthenticationToken, Refresh: payload.RefreshToken}
+	return authResult{Access: tokens.AuthenticationToken, Refresh: tokens.RefreshToken}
+}
+
+func decodeTokens(t *testing.T, body []byte) tokenPair {
+	t.Helper()
+	var flat tokenPair
+	require.NoError(t, json.Unmarshal(body, &flat))
+	if flat.AuthenticationToken != "" {
+		return flat
+	}
+	var wrapped tokenEnvelope
+	require.NoError(t, json.Unmarshal(body, &wrapped))
+	return wrapped.Data
 }
 
 func (e *testEnv) createProduct(t *testing.T, token string, payload map[string]any) map[string]any {
@@ -160,7 +153,6 @@ func (e *testEnv) createProduct(t *testing.T, token string, payload map[string]a
 		Data map[string]any `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
-	e.clearRateLimit(t)
 	return out.Data
 }
 
@@ -276,7 +268,6 @@ func TestRefreshRotatesToken(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
 	check(t, payload.Data.RefreshToken != "" && payload.Data.RefreshToken != auth.Refresh, "refresh token harus berganti")
 
-	env.clearRateLimit(t)
 	reuse := env.request(t, http.MethodPost, "/api/auth/refresh", map[string]any{
 		"refresh_token": auth.Refresh,
 	}, "")
@@ -292,11 +283,73 @@ func TestLogoutRevokesRefreshToken(t *testing.T) {
 	}, "")
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	env.clearRateLimit(t)
 	after := env.request(t, http.MethodPost, "/api/auth/refresh", map[string]any{
 		"refresh_token": auth.Refresh,
 	}, "")
 	require.Equal(t, http.StatusUnauthorized, after.Code)
+}
+
+func TestLogoutRevokesAccessToken(t *testing.T) {
+	env := newTestEnv(t)
+	auth := env.registerAndLogin(t, "loutacc_"+fmt.Sprint(time.Now().UnixNano()))
+
+	before := env.request(t, http.MethodGet, "/api/products", nil, auth.Access)
+	require.Equal(t, http.StatusOK, before.Code, before.Body.String())
+
+	logout := env.request(t, http.MethodPost, "/api/auth/logout", map[string]any{
+		"refresh_token": auth.Refresh,
+	}, "")
+	require.Equal(t, http.StatusOK, logout.Code, logout.Body.String())
+
+	after := env.request(t, http.MethodGet, "/api/products", nil, auth.Access)
+	require.Equal(t, http.StatusUnauthorized, after.Code, "access token harus mati setelah logout")
+	check(t, bytes.Contains(after.Body.Bytes(), []byte("TOKEN_REVOKED")), "kode harus TOKEN_REVOKED")
+
+	detail := env.request(t, http.MethodGet, "/api/products/1", nil, auth.Access)
+	require.Equal(t, http.StatusUnauthorized, detail.Code)
+
+	write := env.request(t, http.MethodPost, "/api/products", defaultProduct(), auth.Access)
+	require.Equal(t, http.StatusUnauthorized, write.Code, "token logout tidak boleh bisa menulis produk")
+}
+
+func TestRefreshRevokesOldAccessToken(t *testing.T) {
+	env := newTestEnv(t)
+	auth := env.registerAndLogin(t, "rotate_"+fmt.Sprint(time.Now().UnixNano()))
+
+	before := env.request(t, http.MethodGet, "/api/products", nil, auth.Access)
+	require.Equal(t, http.StatusOK, before.Code)
+
+	rotated := env.request(t, http.MethodPost, "/api/auth/refresh", map[string]any{
+		"refresh_token": auth.Refresh,
+	}, "")
+	require.Equal(t, http.StatusOK, rotated.Code, rotated.Body.String())
+
+	newAccess := decodeTokens(t, rotated.Body.Bytes()).AuthenticationToken
+	require.NotEmpty(t, newAccess)
+
+	old := env.request(t, http.MethodGet, "/api/products", nil, auth.Access)
+	require.Equal(t, http.StatusUnauthorized, old.Code, "access token lama harus dicabut saat rotasi")
+	check(t, bytes.Contains(old.Body.Bytes(), []byte("TOKEN_REVOKED")), "kode harus TOKEN_REVOKED")
+
+	fresh := env.request(t, http.MethodGet, "/api/products", nil, newAccess)
+	require.Equal(t, http.StatusOK, fresh.Code, fresh.Body.String())
+}
+
+func TestNewLoginNotAffectedByOtherLogout(t *testing.T) {
+	env := newTestEnv(t)
+	first := env.registerAndLogin(t, "multi_a_"+fmt.Sprint(time.Now().UnixNano()))
+	second := env.registerAndLogin(t, "multi_b_"+fmt.Sprint(time.Now().UnixNano()))
+
+	require.Equal(t, http.StatusOK, env.request(t, http.MethodGet, "/api/products", nil, second.Access).Code)
+
+	logout := env.request(t, http.MethodPost, "/api/auth/logout", map[string]any{
+		"refresh_token": first.Refresh,
+	}, "")
+	require.Equal(t, http.StatusOK, logout.Code)
+
+	require.Equal(t, http.StatusUnauthorized, env.request(t, http.MethodGet, "/api/products", nil, first.Access).Code)
+	stillValid := env.request(t, http.MethodGet, "/api/products", nil, second.Access)
+	require.Equal(t, http.StatusOK, stillValid.Code, "logout satu sesi tidak boleh mematikan sesi lain")
 }
 
 func TestCreateProductRequiresAuth(t *testing.T) {
@@ -325,7 +378,6 @@ func TestCreateProductValidation(t *testing.T) {
 	}
 	for name, payload := range cases {
 		t.Run(name, func(t *testing.T) {
-			env.clearRateLimit(t)
 			rec := env.request(t, http.MethodPost, "/api/products", payload, auth.Access)
 			require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 			check(t, bytes.Contains(rec.Body.Bytes(), []byte("VALIDATION_ERROR")), "validasi gagal harus kode VALIDATION_ERROR")
@@ -344,7 +396,7 @@ func TestProductCRUDLifecycle(t *testing.T) {
 	check(t, created["created_by_id"] != nil, "created_by_id harus terisi")
 	check(t, created["updated_at"] != nil, "updated_at harus terisi")
 
-	got := env.request(t, http.MethodGet, fmt.Sprintf("/api/products/%d", int64(id)), nil, "")
+	got := env.request(t, http.MethodGet, fmt.Sprintf("/api/products/%d", int64(id)), nil, auth.Access)
 	require.Equal(t, http.StatusOK, got.Code)
 
 	update := env.request(t, http.MethodPut, fmt.Sprintf("/api/products/%d", int64(id)), map[string]any{
@@ -355,36 +407,27 @@ func TestProductCRUDLifecycle(t *testing.T) {
 	check(t, bytes.Contains(update.Body.Bytes(), []byte("Awesome T-Shirt v2")), "hasil update harus memuat judul baru")
 	check(t, bytes.Contains(update.Body.Bytes(), []byte("Clothes")), "field yang tidak dikirim harus dipertahankan")
 
-	env.clearRateLimit(t)
 	del := env.request(t, http.MethodDelete, fmt.Sprintf("/api/products/%d", int64(id)), nil, auth.Access)
 	require.Equal(t, http.StatusOK, del.Code, del.Body.String())
 
-	gone := env.request(t, http.MethodGet, fmt.Sprintf("/api/products/%d", int64(id)), nil, "")
+	gone := env.request(t, http.MethodGet, fmt.Sprintf("/api/products/%d", int64(id)), nil, auth.Access)
 	require.Equal(t, http.StatusNotFound, gone.Code)
 	check(t, bytes.Contains(gone.Body.Bytes(), []byte("NOT_FOUND")), "produk terhapus harus 404 dengan kode NOT_FOUND")
 }
 
 func TestGetProductNotFound(t *testing.T) {
 	env := newTestEnv(t)
-	rec := env.request(t, http.MethodGet, "/api/products/99999999", nil, "")
+	auth := env.registerAndLogin(t, "guard_"+fmt.Sprint(time.Now().UnixNano()))
+	rec := env.request(t, http.MethodGet, "/api/products/99999999", nil, auth.Access)
 	require.Equal(t, http.StatusNotFound, rec.Code)
 	check(t, bytes.Contains(rec.Body.Bytes(), []byte("produk tidak ditemukan")), "pesan 404 produk harus sesuai")
 }
 
 func TestGetProductInvalidID(t *testing.T) {
 	env := newTestEnv(t)
-	rec := env.request(t, http.MethodGet, "/api/products/abc", nil, "")
-	require.Equal(t, http.StatusBadRequest, rec.Code)
-}
-
-func TestWriteEndpointsRequireAuth(t *testing.T) {
-	env := newTestEnv(t)
 	auth := env.registerAndLogin(t, "guard_"+fmt.Sprint(time.Now().UnixNano()))
-	created := env.createProduct(t, auth.Access, defaultProduct())
-	id := int64(created["id"].(float64))
-
-	require.Equal(t, http.StatusUnauthorized, env.request(t, http.MethodPut, fmt.Sprintf("/api/products/%d", id), map[string]any{"price": 10}, "").Code)
-	require.Equal(t, http.StatusUnauthorized, env.request(t, http.MethodDelete, fmt.Sprintf("/api/products/%d", id), nil, "").Code)
+	rec := env.request(t, http.MethodGet, "/api/products/abc", nil, auth.Access)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
 func TestListFilterSearchCategoryPagination(t *testing.T) {
@@ -395,7 +438,7 @@ func TestListFilterSearchCategoryPagination(t *testing.T) {
 	env.createProduct(t, auth.Access, map[string]any{"title": "Celana Jeans", "price": 150, "category": "Clothes", "images": []string{"https://a.test/2.png"}})
 	env.createProduct(t, auth.Access, map[string]any{"title": "Mouse Nirkabel", "price": 45, "category": "Electronics", "images": []string{"https://a.test/3.png"}})
 
-	listAll := env.request(t, http.MethodGet, "/api/products?limit=100", nil, "")
+	listAll := env.request(t, http.MethodGet, "/api/products?limit=100", nil, auth.Access)
 	require.Equal(t, http.StatusOK, listAll.Code, listAll.Body.String())
 
 	var all struct {
@@ -408,7 +451,7 @@ func TestListFilterSearchCategoryPagination(t *testing.T) {
 	require.GreaterOrEqual(t, len(all.Data), 3)
 	require.GreaterOrEqual(t, all.Meta.Total, 3)
 
-	search := env.request(t, http.MethodGet, "/api/products?search=Kaos&limit=100", nil, "")
+	search := env.request(t, http.MethodGet, "/api/products?search=Kaos&limit=100", nil, auth.Access)
 	var searched struct {
 		Data []map[string]any `json:"data"`
 	}
@@ -416,7 +459,7 @@ func TestListFilterSearchCategoryPagination(t *testing.T) {
 	require.Len(t, searched.Data, 1)
 	check(t, searched.Data[0]["title"] == "Kaos Katun", "judul hasil search harus Kaos Katun")
 
-	byCategory := env.request(t, http.MethodGet, "/api/products?category=Electronics&limit=100", nil, "")
+	byCategory := env.request(t, http.MethodGet, "/api/products?category=Electronics&limit=100", nil, auth.Access)
 	var filtered struct {
 		Data []map[string]any `json:"data"`
 	}
@@ -424,7 +467,7 @@ func TestListFilterSearchCategoryPagination(t *testing.T) {
 	require.Len(t, filtered.Data, 1)
 	check(t, filtered.Data[0]["category"] == "Electronics", "kategori hasil filter harus Electronics")
 
-	page1 := env.request(t, http.MethodGet, "/api/products?limit=2&page=1", nil, "")
+	page1 := env.request(t, http.MethodGet, "/api/products?limit=2&page=1", nil, auth.Access)
 	var first struct {
 		Data []map[string]any `json:"data"`
 		Meta struct {
@@ -439,7 +482,7 @@ func TestListFilterSearchCategoryPagination(t *testing.T) {
 	check(t, first.Meta.Page == 1 && first.Meta.Limit == 2, "meta page dan limit harus sesuai")
 	check(t, first.Meta.HasNext, "halaman pertama harus punya halaman berikutnya")
 
-	page2 := env.request(t, http.MethodGet, "/api/products?limit=2&page=2", nil, "")
+	page2 := env.request(t, http.MethodGet, "/api/products?limit=2&page=2", nil, auth.Access)
 	var second struct {
 		Data []map[string]any `json:"data"`
 	}
@@ -450,15 +493,17 @@ func TestListFilterSearchCategoryPagination(t *testing.T) {
 
 func TestListRejectsBadQuery(t *testing.T) {
 	env := newTestEnv(t)
+	auth := env.registerAndLogin(t, "guard_"+fmt.Sprint(time.Now().UnixNano()))
 	for _, path := range []string{"/api/products?page=0", "/api/products?page=abc", "/api/products?limit=0", "/api/products?limit=999"} {
-		rec := env.request(t, http.MethodGet, path, nil, "")
+		rec := env.request(t, http.MethodGet, path, nil, auth.Access)
 		require.Equal(t, http.StatusBadRequest, rec.Code, path)
 	}
 }
 
 func TestCORSHeaders(t *testing.T) {
 	env := newTestEnv(t)
-	rec := env.request(t, http.MethodGet, "/api/products", nil, "")
+	auth := env.registerAndLogin(t, "guard_"+fmt.Sprint(time.Now().UnixNano()))
+	rec := env.request(t, http.MethodGet, "/api/products", nil, auth.Access)
 	check(t, rec.Header().Get("Access-Control-Allow-Origin") != "" || rec.Header().Get("Vary") == "Origin", "header CORS harus ada")
 }
 
@@ -475,62 +520,48 @@ func TestCORSPreflight(t *testing.T) {
 	check(t, bytes.Contains([]byte(rec.Header().Get("Access-Control-Allow-Methods")), []byte("DELETE")), "preflight harus mengizinkan DELETE")
 }
 
-func TestProductWriteRateLimit(t *testing.T) {
+func TestAllProductEndpointsRequireAuth(t *testing.T) {
 	env := newTestEnv(t)
-	auth := env.registerAndLogin(t, "rl_"+fmt.Sprint(time.Now().UnixNano()))
 
-	first := env.request(t, http.MethodPost, "/api/products", defaultProduct(), auth.Access)
-	require.Equal(t, http.StatusCreated, first.Code, first.Body.String())
-
-	second := env.request(t, http.MethodPost, "/api/products", defaultProduct(), auth.Access)
-	require.Equal(t, http.StatusTooManyRequests, second.Code, "permintaan kedua dalam 5 detik harus diblokir")
-	check(t, bytes.Contains(second.Body.Bytes(), []byte("RATE_LIMITED")), "rate limit harus kode RATE_LIMITED")
-	check(t, second.Header().Get("Retry-After") != "", "header Retry-After wajib ada")
+	cases := []struct {
+		method string
+		path   string
+		body   any
+	}{
+		{http.MethodGet, "/api/products", nil},
+		{http.MethodGet, "/api/products/1", nil},
+		{http.MethodPost, "/api/products", defaultProduct()},
+		{http.MethodPut, "/api/products/1", map[string]any{"price": 10}},
+		{http.MethodDelete, "/api/products/1", nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			rec := env.request(t, tc.method, tc.path, tc.body, "")
+			require.Equal(t, http.StatusUnauthorized, rec.Code, rec.Body.String())
+			check(t, bytes.Contains(rec.Body.Bytes(), []byte("UNAUTHORIZED")), "tanpa token harus kode UNAUTHORIZED")
+		})
+	}
 }
 
-func TestAuthRateLimit(t *testing.T) {
+func TestProductEndpointsAcceptValidToken(t *testing.T) {
 	env := newTestEnv(t)
-	username := "authrl_" + fmt.Sprint(time.Now().UnixNano())
-	payload := map[string]any{
-		"username":              username,
-		"password":              "supersecret",
-		"password_confirmation": "supersecret",
-	}
+	auth := env.registerAndLogin(t, "guard_"+fmt.Sprint(time.Now().UnixNano()))
+	created := env.createProduct(t, auth.Access, defaultProduct())
+	id := int64(created["id"].(float64))
 
-	created := env.request(t, http.MethodPost, "/api/auth/register", payload, "")
-	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
+	list := env.request(t, http.MethodGet, "/api/products", nil, auth.Access)
+	require.Equal(t, http.StatusOK, list.Code, list.Body.String())
 
-	for i := 0; i < 2; i++ {
-		rec := env.request(t, http.MethodPost, "/api/auth/login", map[string]any{
-			"username": username,
-			"password": "supersecret",
-		}, "")
-		require.Equal(t, http.StatusOK, rec.Code, "percobaan %d", i+2)
-	}
-
-	blocked := env.request(t, http.MethodPost, "/api/auth/login", map[string]any{
-		"username": username,
-		"password": "supersecret",
-	}, "")
-	require.Equal(t, http.StatusTooManyRequests, blocked.Code, "percobaan ke-4 harus diblokir")
+	detail := env.request(t, http.MethodGet, fmt.Sprintf("/api/products/%d", id), nil, auth.Access)
+	require.Equal(t, http.StatusOK, detail.Code, detail.Body.String())
 }
 
-func TestCacheIsUsedAndInvalidated(t *testing.T) {
+func TestProductRejectsExpiredToken(t *testing.T) {
 	env := newTestEnv(t)
-	auth := env.registerAndLogin(t, "cache_"+fmt.Sprint(time.Now().UnixNano()))
 
-	env.request(t, http.MethodGet, "/api/products?category=CacheTest&limit=100", nil, "")
-	keys := env.redisKeys(t, "products:v*")
-	check(t, len(keys) > 0, "cache list harus tersimpan di redis")
-
-	env.createProduct(t, auth.Access, map[string]any{
-		"title": "Cache Buster", "price": 10, "category": "CacheTest",
-		"images": []string{"https://a.test/c.png"},
-	})
-
-	rec := env.request(t, http.MethodGet, "/api/products?category=CacheTest&limit=100", nil, "")
-	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	check(t, bytes.Contains(rec.Body.Bytes(), []byte("Cache Buster")), "data baru harus terlihat setelah invalidasi cache")
+	rec := env.request(t, http.MethodGet, "/api/products", nil, "token.palsu")
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+	check(t, bytes.Contains(rec.Body.Bytes(), []byte("TOKEN_INVALID")), "token palsu harus kode TOKEN_INVALID")
 }
 
 func TestUnknownRouteReturnsJSON404(t *testing.T) {

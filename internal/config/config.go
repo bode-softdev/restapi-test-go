@@ -15,18 +15,12 @@ type Config struct {
 	AppPort         string
 	GinMode         string
 	DatabaseURL     string
-	RedisAddr       string
-	RedisPassword   string
-	RedisDB         int
 	JWTSecret       string
 	AccessTokenTTL  time.Duration
 	RefreshTTL      time.Duration
 	BcryptCost      int
-	CacheTTLList    time.Duration
-	CacheTTLItem    time.Duration
 	ConnectAttempts int
 	ConnectBackoff  time.Duration
-	RateLimitPrefix string
 }
 
 func Load() *Config {
@@ -36,18 +30,12 @@ func Load() *Config {
 		AppPort:         env("APP_PORT", "8080"),
 		GinMode:         env("GIN_MODE", "release"),
 		DatabaseURL:     env("DATABASE_URL", "postgres://restapi:restapi@localhost:5432/restapi?sslmode=disable"),
-		RedisAddr:       env("REDIS_ADDR", "localhost:6379"),
-		RedisPassword:   env("REDIS_PASSWORD", ""),
-		RedisDB:         envInt("REDIS_DB", 0),
 		JWTSecret:       env("JWT_SECRET", ""),
 		AccessTokenTTL:  envDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
 		RefreshTTL:      envDuration("REFRESH_TOKEN_TTL", 30*24*time.Hour),
 		BcryptCost:      envInt("BCRYPT_COST", 10),
-		CacheTTLList:    envDuration("CACHE_TTL_LIST", 60*time.Second),
-		CacheTTLItem:    envDuration("CACHE_TTL_ITEM", 300*time.Second),
 		ConnectAttempts: envInt("CONNECT_ATTEMPTS", 30),
 		ConnectBackoff:  envDuration("CONNECT_BACKOFF", time.Second),
-		RateLimitPrefix: env("RATE_LIMIT_PREFIX", "rl"),
 	}
 
 	if cfg.JWTSecret == "" {
@@ -91,9 +79,6 @@ func (c *Config) Addr() string {
 }
 
 func (c *Config) Validate() error {
-	if c.RedisDB < 0 {
-		return fmt.Errorf("config: REDIS_DB tidak boleh negatif")
-	}
 	if c.BcryptCost < 4 || c.BcryptCost > 31 {
 		return fmt.Errorf("config: BCRYPT_COST harus di rentang 4-31")
 	}

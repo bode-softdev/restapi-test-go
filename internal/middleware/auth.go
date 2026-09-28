@@ -1,12 +1,10 @@
 package middleware
 
 import (
-	"strconv"
+	"errors"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 
 	"restapi-test/internal/response"
 	"restapi-test/internal/service"
@@ -27,19 +25,26 @@ func Auth(auth *service.AuthService) gin.HandlerFunc {
 			})
 			return
 		}
-		claims, err := auth.ParseAccessToken(raw)
+		actor, err := auth.ValidateAccessToken(c.Request.Context(), raw)
 		if err != nil {
-			code := response.CodeTokenInvalid
-			if err == service.ErrTokenExpired {
-				code = response.CodeTokenExpired
-			}
-			response.Fail(c, 401, code, err.Error(), nil)
+			response.Fail(c, 401, tokenErrorCode(err), err.Error(), nil)
 			return
 		}
-		c.Set(ctxUserID, claims.UserID)
-		c.Set(ctxUsername, claims.Username)
-		c.Set(ctxRole, claims.Role)
+		c.Set(ctxUserID, actor.UserID)
+		c.Set(ctxUsername, actor.Username)
+		c.Set(ctxRole, actor.Role)
 		c.Next()
+	}
+}
+
+func tokenErrorCode(err error) string {
+	switch {
+	case errors.Is(err, service.ErrTokenExpired):
+		return response.CodeTokenExpired
+	case errors.Is(err, service.ErrTokenRevoked):
+		return response.CodeTokenRevoked
+	default:
+		return response.CodeTokenInvalid
 	}
 }
 
@@ -58,75 +63,10 @@ func CurrentUser(c *gin.Context) (service.Actor, bool) {
 }
 
 func extractToken(c *gin.Context) (string, bool) {
-	header := c.GetHeader("Authorization")
-	if header != "" {
-		parts := strings.SplitN(header, " ", 2)
-		if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
-			if token := strings.TrimSpace(parts[1]); token != "" {
-				return token, true
-			}
-		}
+	parts := strings.SplitN(c.GetHeader("Authorization"), " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
 		return "", false
 	}
-	if token := strings.TrimSpace(c.GetHeader("X-API-Token")); token != "" {
-		return token, true
-	}
-	return "", false
-}
-
-type RateLimitRule struct {
-	Limit  int
-	Window time.Duration
-}
-
-func RateLimit(client *redis.Client, prefix, ruleName string, rule RateLimitRule) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if client == nil {
-			c.Next()
-			return
-		}
-		identifier := c.ClientIP()
-		if actor, ok := CurrentUser(c); ok {
-			identifier = "user:" + strconv.FormatUint(uint64(actor.ID), 10)
-		}
-
-		key := strings.Join([]string{prefix, ruleName, identifier}, ":")
-		ctx := c.Request.Context()
-
-		count, err := client.Incr(ctx, key).Result()
-		if err != nil {
-			c.Next()
-			return
-		}
-		if count == 1 {
-			if err := client.Expire(ctx, key, rule.Window).Err(); err != nil {
-				c.Next()
-				return
-			}
-		}
-
-		ttl, err := client.TTL(ctx, key).Result()
-		if err != nil || ttl <= 0 {
-			ttl = rule.Window
-		}
-		retryAfter := int(ttl.Seconds())
-		if retryAfter < 1 {
-			retryAfter = 1
-		}
-		c.Header("X-RateLimit-Limit", strconv.Itoa(rule.Limit))
-		c.Header("X-RateLimit-Remaining", strconv.Itoa(max(0, rule.Limit-int(count))))
-		c.Header("X-RateLimit-Reset", strconv.FormatInt(time.Now().Add(ttl).Unix(), 10))
-
-		if int(count) > rule.Limit {
-			c.Header("Retry-After", strconv.Itoa(retryAfter))
-			response.Fail(c, 429, response.CodeRateLimited,
-				"terlalu banyak permintaan, coba lagi nanti", map[string]any{
-					"limit":       rule.Limit,
-					"window":      rule.Window.String(),
-					"retry_after": retryAfter,
-				})
-			return
-		}
-		c.Next()
-	}
+	token := strings.TrimSpace(parts[1])
+	return token, token != ""
 }

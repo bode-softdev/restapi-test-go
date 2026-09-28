@@ -27,6 +27,12 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
+type AuthContext struct {
+	UserID   uint
+	Username string
+	Role     string
+}
+
 type TokenPair struct {
 	AuthenticationToken string
 	RefreshToken        string
@@ -104,6 +110,10 @@ func (s *AuthService) Logout(ctx context.Context, rawToken string) error {
 	return s.tokens.Revoke(ctx, hashToken(rawToken))
 }
 
+func (s *AuthService) LogoutAll(ctx context.Context, userID uint) error {
+	return s.tokens.RevokeAllForUser(ctx, userID)
+}
+
 func (s *AuthService) ParseAccessToken(rawToken string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(rawToken, &Claims{}, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -124,15 +134,36 @@ func (s *AuthService) ParseAccessToken(rawToken string) (*Claims, error) {
 	return claims, nil
 }
 
+func (s *AuthService) ValidateAccessToken(ctx context.Context, rawToken string) (AuthContext, error) {
+	claims, err := s.ParseAccessToken(rawToken)
+	if err != nil {
+		return AuthContext{}, err
+	}
+	revoked, err := s.tokens.IsAccessTokenRevoked(ctx, claims.ID)
+	if err != nil {
+		return AuthContext{}, err
+	}
+	if revoked {
+		return AuthContext{}, ErrTokenRevoked
+	}
+	return AuthContext{UserID: claims.UserID, Username: claims.Username, Role: claims.Role}, nil
+}
+
 func (s *AuthService) issuePair(ctx context.Context, user model.User) (TokenPair, error) {
 	now := time.Now()
 	expires := now.Add(s.cfg.AccessTokenTTL)
+
+	jti, err := randomToken(16)
+	if err != nil {
+		return TokenPair{}, err
+	}
 
 	claims := Claims{
 		UserID:   user.ID,
 		Username: user.Username,
 		Role:     user.Role,
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        jti,
 			Subject:   strconv.FormatUint(uint64(user.ID), 10),
 			Issuer:    "restapi-test",
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -151,6 +182,7 @@ func (s *AuthService) issuePair(ctx context.Context, user model.User) (TokenPair
 	record := model.RefreshToken{
 		UserID:    user.ID,
 		TokenHash: hashToken(refresh),
+		AccessJTI: jti,
 		ExpiresAt: now.Add(s.cfg.RefreshTTL),
 		CreatedAt: now,
 	}
@@ -170,6 +202,7 @@ var (
 	ErrPasswordMismatch = errors.New("password_confirmation tidak cocok")
 	ErrTokenInvalid     = errors.New("token tidak valid")
 	ErrTokenExpired     = errors.New("token kedaluwarsa")
+	ErrTokenRevoked     = errors.New("token sudah dicabut, silakan login ulang")
 	ErrUsernameInvalid  = errors.New("username tidak valid")
 )
 

@@ -24,11 +24,73 @@ Content-Type: application/json
     "password": "testpassword"
 }
 
-###
+### get token
 @authToken = {{login.response.body.authentication_token}}
+@refreshToken = {{login.response.body.refresh_token}}
+### create product
+# @name createProduct
+POST {{baseUrl}}api/products
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+    "category": "Clothes",
+    "description": "High-quality cotton t-shirt",
+    "images": [
+    "https://placeimg.com/640/480/any"
+    ],
+    "price": 99.99,
+    "title": "XXXAwesome T-Shirt"
+}
 
 ### list products
 # @name listProducts
 GET {{baseUrl}}api/products
 Content-Type: application/json
-# Authorization: Bearer {{authToken}}
+Authorization: Bearer {{authToken}}
+
+### get id
+@productId = {{listProducts.response.body.data[0].id}}
+
+### get product by id
+# @name getProductById
+GET {{baseUrl}}api/products/{{productId}}
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+### update product by id
+# @name updateProductById
+PUT {{baseUrl}}api/products/{{productId}}
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+    "title": "Awesome T-Shirt"
+}
+
+###
+@productIdDel = 13
+
+### delete product by id
+# @name deleteProductById
+DELETE {{baseUrl}}api/products/{{productIdDel}}
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+### refresh token
+# @name refreshTokenEndpoint
+POST {{baseUrl}}api/auth/refresh
+Content-Type: application/json
+
+{
+    "refresh_token": "{{refreshToken}}"
+}
+
+### logout
+# @name logout
+POST {{baseUrl}}api/auth/logout
+Content-Type: application/json
+
+{
+    "refresh_token": "{{refreshToken}}"
+}

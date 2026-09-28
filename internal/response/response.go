@@ -111,11 +111,11 @@ const (
 	CodeUnauthorized = "UNAUTHORIZED"
 	CodeNotFound     = "NOT_FOUND"
 	CodeConflict     = "CONFLICT"
-	CodeRateLimited  = "RATE_LIMITED"
 	CodeInternal     = "INTERNAL_ERROR"
 	CodeInvalidQuery = "INVALID_QUERY_PARAMETER"
 	CodeTokenInvalid = "TOKEN_INVALID"
 	CodeTokenExpired = "TOKEN_EXPIRED"
+	CodeTokenRevoked = "TOKEN_REVOKED"
 )
 
 func OK(c *gin.Context, data any) {

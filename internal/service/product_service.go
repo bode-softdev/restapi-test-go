@@ -3,12 +3,10 @@ package service
 import (
 	"context"
 	"errors"
-	"strconv"
 	"time"
 
 	"gorm.io/datatypes"
 
-	"restapi-test/internal/cache"
 	"restapi-test/internal/model"
 	"restapi-test/internal/repository"
 	"restapi-test/internal/response"
@@ -28,32 +26,14 @@ type Actor struct {
 }
 
 type ProductService struct {
-	repo    *repository.ProductRepository
-	cache   *cache.Cache
-	ttlList time.Duration
-	ttlItem time.Duration
+	repo *repository.ProductRepository
 }
 
-func NewProductService(repo *repository.ProductRepository, c *cache.Cache, ttlList, ttlItem time.Duration) *ProductService {
-	return &ProductService{repo: repo, cache: c, ttlList: ttlList, ttlItem: ttlItem}
+func NewProductService(repo *repository.ProductRepository) *ProductService {
+	return &ProductService{repo: repo}
 }
 
 func (s *ProductService) List(ctx context.Context, filter repository.ProductFilter) ([]response.ProductResponse, response.Meta, error) {
-	key := s.cache.ListKey(ctx,
-		"search="+filter.Search,
-		"category="+filter.Category,
-		"page="+strconv.Itoa(filter.Page),
-		"limit="+strconv.Itoa(filter.Limit),
-	)
-
-	var cached struct {
-		Data []response.ProductResponse `json:"data"`
-		Meta response.Meta              `json:"meta"`
-	}
-	if s.cache.GetJSON(ctx, key, &cached) {
-		return cached.Data, cached.Meta, nil
-	}
-
 	products, total, err := s.repo.List(ctx, filter)
 	if err != nil {
 		return nil, response.Meta{}, err
@@ -63,35 +43,10 @@ func (s *ProductService) List(ctx context.Context, filter repository.ProductFilt
 	for _, p := range products {
 		items = append(items, toProductResponse(p))
 	}
-
-	meta := buildMeta(total, filter.Page, filter.Limit)
-	s.cache.SetJSON(ctx, key, struct {
-		Data []response.ProductResponse `json:"data"`
-		Meta response.Meta              `json:"meta"`
-	}{Data: items, Meta: meta}, s.ttlList)
-
-	return items, meta, nil
+	return items, buildMeta(total, filter.Page, filter.Limit), nil
 }
 
 func (s *ProductService) GetByID(ctx context.Context, id uint64) (response.ProductResponse, error) {
-	key := s.cache.ItemKey(ctx, id)
-
-	var cached response.ProductResponse
-	if s.cache.GetJSON(ctx, key, &cached) {
-		return cached, nil
-	}
-
-	product, err := s.repo.FindByID(ctx, id)
-	if err != nil {
-		return response.ProductResponse{}, err
-	}
-
-	out := toProductResponse(product)
-	s.cache.SetJSON(ctx, key, out, s.ttlItem)
-	return out, nil
-}
-
-func (s *ProductService) GetByIDFresh(ctx context.Context, id uint64) (response.ProductResponse, error) {
 	product, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return response.ProductResponse{}, err
@@ -117,7 +72,6 @@ func (s *ProductService) Create(ctx context.Context, input ProductInput, actor A
 	if err := s.repo.Create(ctx, &product); err != nil {
 		return response.ProductResponse{}, err
 	}
-	s.cache.BumpVersion(ctx)
 	return toProductResponse(product), nil
 }
 
@@ -139,16 +93,11 @@ func (s *ProductService) Update(ctx context.Context, id uint64, input ProductInp
 	if err := s.repo.Update(ctx, &product); err != nil {
 		return response.ProductResponse{}, err
 	}
-	s.cache.BumpVersion(ctx)
 	return toProductResponse(product), nil
 }
 
 func (s *ProductService) Delete(ctx context.Context, id uint64) error {
-	if err := s.repo.Delete(ctx, id); err != nil {
-		return err
-	}
-	s.cache.BumpVersion(ctx)
-	return nil
+	return s.repo.Delete(ctx, id)
 }
 
 func buildMeta(total int64, page, limit int) response.Meta {
@@ -176,10 +125,10 @@ func toProductResponse(p model.Product) response.ProductResponse {
 		Description: p.Description,
 		Category:    p.Category,
 		Images:      images,
-		CreatedAt:   p.CreatedAt.Format("2006-01-02 15:04:05"),
+		CreatedAt:   p.CreatedAt.Format("2006-01-02 15:01:05"),
 		CreatedBy:   p.CreatedBy,
 		CreatedByID: p.CreatedByID,
-		UpdatedAt:   p.UpdatedAt.Format("2006-01-02 15:04:05"),
+		UpdatedAt:   p.UpdatedAt.Format("2006-01-02 15:01:05"),
 		UpdatedBy:   p.UpdatedBy,
 		UpdatedByID: p.UpdatedByID,
 	}
