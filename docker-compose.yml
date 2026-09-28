@@ -1,0 +1,71 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: restapi-api
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      APP_PORT: "8080"
+      GIN_MODE: "${GIN_MODE:-release}"
+      DATABASE_URL: "postgres://${POSTGRES_USER:-restapi}:${POSTGRES_PASSWORD:-restapi}@postgres:5432/${POSTGRES_DB:-restapi}?sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+      REDIS_DB: "${REDIS_DB:-0}"
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET wajib diisi di .env}"
+      ACCESS_TOKEN_TTL: "${ACCESS_TOKEN_TTL:-15m}"
+      REFRESH_TOKEN_TTL: "${REFRESH_TOKEN_TTL:-720h}"
+      BCRYPT_COST: "${BCRYPT_COST:-10}"
+      CACHE_TTL_LIST: "${CACHE_TTL_LIST:-60s}"
+      CACHE_TTL_ITEM: "${CACHE_TTL_ITEM:-300s}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - restapi
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: restapi-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-restapi}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-restapi}"
+      POSTGRES_DB: "${POSTGRES_DB:-restapi}"
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-restapi} -d ${POSTGRES_DB:-restapi}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - restapi
+
+  redis:
+    image: redis:7-alpine
+    container_name: restapi-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "no", "--save", ""]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - restapi
+
+volumes:
+  postgres-data:
+
+networks:
+  restapi:
+    driver: bridge

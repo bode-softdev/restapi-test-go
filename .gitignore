@@ -1,0 +1,24 @@
+# env
+.env
+.env.*
+!.env.example
+
+# build
+bin/
+*.exe
+*.test
+*.out
+coverage.txt
+
+# go workspace
+go.work
+go.work.sum
+
+# editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# logs
+*.log
