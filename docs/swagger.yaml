@@ -1,0 +1,623 @@
+basePath: /
+definitions:
+  internal_handler.loginResponse:
+    properties:
+      authentication_token:
+        type: string
+      expires_in:
+        example: 900
+        type: integer
+      refresh_token:
+        type: string
+      token_type:
+        example: Bearer
+        type: string
+      user:
+        $ref: '#/definitions/restapi-test_internal_response.UserResponse'
+    type: object
+  internal_handler.registerResponse:
+    properties:
+      data:
+        $ref: '#/definitions/restapi-test_internal_response.UserResponse'
+      message:
+        type: string
+    type: object
+  restapi-test_internal_response.DataPayload:
+    properties:
+      data: {}
+    type: object
+  restapi-test_internal_response.ErrorBody:
+    properties:
+      code:
+        type: string
+      details:
+        additionalProperties: {}
+        type: object
+      message:
+        type: string
+    type: object
+  restapi-test_internal_response.ErrorPayload:
+    properties:
+      error:
+        $ref: '#/definitions/restapi-test_internal_response.ErrorBody'
+    type: object
+  restapi-test_internal_response.ListPayload:
+    properties:
+      data: {}
+      meta:
+        $ref: '#/definitions/restapi-test_internal_response.Meta'
+    type: object
+  restapi-test_internal_response.LoginRequest:
+    properties:
+      password:
+        example: supersecret
+        type: string
+      username:
+        example: jhon_doe
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  restapi-test_internal_response.MessagePayload:
+    properties:
+      data: {}
+      message:
+        type: string
+    type: object
+  restapi-test_internal_response.Meta:
+    properties:
+      has_next:
+        type: boolean
+      has_previous:
+        type: boolean
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+      total_pages:
+        type: integer
+    type: object
+  restapi-test_internal_response.ProductRequest:
+    properties:
+      category:
+        example: Clothes
+        maxLength: 100
+        type: string
+      description:
+        example: High-quality cotton t-shirt
+        maxLength: 2000
+        type: string
+      images:
+        example:
+        - https://placeimg.com/640/480/any
+        items:
+          type: string
+        minItems: 1
+        type: array
+      price:
+        example: 99.99
+        type: number
+      title:
+        example: Awesome T-Shirt
+        maxLength: 191
+        type: string
+    required:
+    - category
+    - images
+    - price
+    - title
+    type: object
+  restapi-test_internal_response.ProductResponse:
+    properties:
+      category:
+        example: Clothes
+        type: string
+      created_at:
+        example: "2025-01-01 15:01:04"
+        type: string
+      created_by:
+        example: Jhon Doe
+        type: string
+      created_by_id:
+        example: 1
+        type: integer
+      description:
+        example: High-quality cotton t-shirt
+        type: string
+      id:
+        example: 1
+        type: integer
+      images:
+        example:
+        - https://placeimg.com/640/480/any
+        items:
+          type: string
+        type: array
+      price:
+        example: 99.99
+        type: number
+      title:
+        example: Awesome T-Shirt
+        type: string
+      updated_at:
+        example: "2025-01-01 15:01:04"
+        type: string
+      updated_by:
+        example: Jhon Doe
+        type: string
+      updated_by_id:
+        example: 1
+        type: integer
+    type: object
+  restapi-test_internal_response.ProductUpdateRequest:
+    properties:
+      category:
+        example: Clothes
+        maxLength: 100
+        type: string
+      description:
+        example: High-quality cotton t-shirt
+        maxLength: 2000
+        type: string
+      images:
+        example:
+        - https://placeimg.com/640/480/any
+        items:
+          type: string
+        minItems: 1
+        type: array
+      price:
+        example: 99.99
+        type: number
+      title:
+        example: Awesome T-Shirt
+        maxLength: 191
+        type: string
+    required:
+    - images
+    type: object
+  restapi-test_internal_response.RefreshRequest:
+    properties:
+      refresh_token:
+        example: a3f1c0d9e8b7...
+        type: string
+    required:
+    - refresh_token
+    type: object
+  restapi-test_internal_response.RegisterRequest:
+    properties:
+      password:
+        example: supersecret
+        maxLength: 72
+        minLength: 8
+        type: string
+      password_confirmation:
+        example: supersecret
+        type: string
+      username:
+        example: jhon_doe
+        maxLength: 30
+        minLength: 3
+        type: string
+    required:
+    - password
+    - password_confirmation
+    - username
+    type: object
+  restapi-test_internal_response.TokenResponse:
+    properties:
+      authentication_token:
+        type: string
+      expires_in:
+        example: 900
+        type: integer
+      refresh_token:
+        type: string
+      token_type:
+        example: Bearer
+        type: string
+    type: object
+  restapi-test_internal_response.UserResponse:
+    properties:
+      created_at:
+        example: "2025-01-01 15:01:04"
+        type: string
+      id:
+        example: 1
+        type: integer
+      username:
+        example: jhon_doe
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    name: restapi-test
+  description: |-
+    REST API untuk manajemen produk dengan autentikasi JWT, cache, dan rate limit.
+    Endpoint produk (POST, PUT, DELETE) wajib memakai header Authorization: Bearer <authentication_token>.
+  license:
+    name: MIT
+  termsOfService: http://swagger.io/terms/
+  title: REST API Product Management
+  version: "1.0"
+paths:
+  /api/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Mengembalikan authentication_token dan refresh_token. Rate limit
+        3 permintaan per 60 detik.
+      parameters:
+      - description: kredensial login
+        in: body
+        name: credentials
+        required: true
+        schema:
+          $ref: '#/definitions/restapi-test_internal_response.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.loginResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+      summary: Login dan ambil token
+      tags:
+      - auth
+  /api/auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: Refresh token dicabut sehingga tidak bisa dipakai lagi.
+      parameters:
+      - description: refresh token
+        in: body
+        name: token
+        required: true
+        schema:
+          $ref: '#/definitions/restapi-test_internal_response.RefreshRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.MessagePayload'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+      summary: Cabut refresh token
+      tags:
+      - auth
+  /api/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Refresh token lama dicabut dan digantikan pair baru (rotasi).
+      parameters:
+      - description: refresh token
+        in: body
+        name: token
+        required: true
+        schema:
+          $ref: '#/definitions/restapi-test_internal_response.RefreshRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.TokenResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+      summary: Tukar refresh token
+      tags:
+      - auth
+  /api/auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Membuat akun baru. Rate limit 3 permintaan per 60 detik.
+      parameters:
+      - description: data register
+        in: body
+        name: credentials
+        required: true
+        schema:
+          $ref: '#/definitions/restapi-test_internal_response.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_handler.registerResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+      summary: Register user baru
+      tags:
+      - auth
+  /api/products:
+    get:
+      consumes:
+      - application/json
+      description: Mengembalikan daftar produk dengan pencarian, filter kategori,
+        dan pagination
+      parameters:
+      - description: cari produk berdasarkan judul
+        in: query
+        name: search
+        type: string
+      - description: filter berdasarkan kategori
+        in: query
+        name: category
+        type: string
+      - default: 1
+        description: nomor halaman
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: jumlah item per halaman
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/restapi-test_internal_response.ListPayload'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/restapi-test_internal_response.ProductResponse'
+                  type: array
+                meta:
+                  $ref: '#/definitions/restapi-test_internal_response.Meta'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+      summary: Ambil semua produk
+      tags:
+      - products
+    post:
+      consumes:
+      - application/json
+      description: Endpoint butuh autentikasi. Rate limit 1 permintaan per 5 detik.
+      parameters:
+      - description: data produk
+        in: body
+        name: product
+        required: true
+        schema:
+          $ref: '#/definitions/restapi-test_internal_response.ProductRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/restapi-test_internal_response.DataPayload'
+            - properties:
+                data:
+                  $ref: '#/definitions/restapi-test_internal_response.ProductResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+      security:
+      - BearerAuth: []
+      summary: Tambah produk baru
+      tags:
+      - products
+  /api/products/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Endpoint butuh autentikasi. Rate limit 1 permintaan per 5 detik.
+      parameters:
+      - description: ID produk
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.MessagePayload'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+      security:
+      - BearerAuth: []
+      summary: Hapus produk
+      tags:
+      - products
+    get:
+      consumes:
+      - application/json
+      description: Mengembalikan detail produk berdasarkan ID
+      parameters:
+      - description: ID produk
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/restapi-test_internal_response.DataPayload'
+            - properties:
+                data:
+                  $ref: '#/definitions/restapi-test_internal_response.ProductResponse'
+              type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+      summary: Ambil detail satu produk
+      tags:
+      - products
+    put:
+      consumes:
+      - application/json
+      description: Endpoint butuh autentikasi. Rate limit 1 permintaan per 5 detik.
+      parameters:
+      - description: ID produk
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: data produk
+        in: body
+        name: product
+        required: true
+        schema:
+          $ref: '#/definitions/restapi-test_internal_response.ProductUpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/restapi-test_internal_response.DataPayload'
+            - properties:
+                data:
+                  $ref: '#/definitions/restapi-test_internal_response.ProductResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/restapi-test_internal_response.ErrorPayload'
+      security:
+      - BearerAuth: []
+      summary: Edit produk
+      tags:
+      - products
+schemes:
+- http
+- https
+securityDefinitions:
+  BearerAuth:
+    description: Masukkan "Bearer {token}"
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
