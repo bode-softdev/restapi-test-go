@@ -111,6 +111,6 @@ Status: `[x]` selesai · `[ ]` belum
 ## 11. Delivery
 
 - [x] Repo git siap, `.gitignore` rapi
-- [ ] Commit Conventional Commits per tahap
+- [x] Commit Conventional Commits per tahap (4 commit)
 - [ ] User mengirim URL remote repository
 - [ ] Tambah `git remote` dan push (push dilakukan user)
