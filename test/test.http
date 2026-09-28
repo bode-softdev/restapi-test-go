@@ -1,0 +1,34 @@
+@baseUrl = http://localhost:8090/
+
+### auth
+GET {{baseUrl}}health
+
+### register
+# @name register
+POST {{baseUrl}}api/auth/register
+Content-Type: application/json
+
+{
+    "username": "bode",
+    "password": "testpassword",
+    "password_confirmation": "testpassword"
+}
+
+### login
+# @name login
+POST {{baseUrl}}api/auth/login
+Content-Type: application/json
+
+{
+    "username": "bode",
+    "password": "testpassword"
+}
+
+###
+@authToken = {{login.response.body.authentication_token}}
+
+### list products
+# @name listProducts
+GET {{baseUrl}}api/products
+Content-Type: application/json
+# Authorization: Bearer {{authToken}}
